@@ -620,7 +620,8 @@ class TelemetryGUI:
                     f"{entry['memory_percent']:.1f}",
                     f"{entry['network_mbps']:.2f}",
                     f"{entry['disk_mbps']:.2f}",
-                    entry['rec_timestamp'] if entry.get('rec_timestamp') else ""
+                    entry['rec_timestamp'] if entry.get('rec_timestamp') else "",
+                    entry.get('activity', 'None')
                 ]
                 table_data.append(row_data)
 
@@ -710,7 +711,8 @@ class TelemetryGUI:
                         f"{entry['memory_percent']:.2f}",
                         f"{entry['network_mbps']:.2f}",
                         f"{entry['disk_mbps']:.2f}",
-                        entry.get('rec_timestamp', '')
+                        entry.get('rec_timestamp', ''),
+                        entry.get('activity', 'None')
                     ])
             exported_files.append(csv_path)
 
@@ -742,7 +744,8 @@ class TelemetryGUI:
                     float(f"{entry['memory_percent']:.2f}"),
                     float(f"{entry['network_mbps']:.2f}"),
                     float(f"{entry['disk_mbps']:.2f}"),
-                    entry.get('rec_timestamp', '')
+                    entry.get('rec_timestamp', ''),
+                    entry.get('activity', 'None')
                 ])
 
             wb.save(xlsx_path)
@@ -764,6 +767,13 @@ class TelemetryGUI:
             for file_path in exported_files:
                 summary_file.write(f"- {os.path.basename(file_path)}\n")
             summary_file.write(f"\nTotal Log Entries: {len(telemetry_log)}\n")
+            
+            # Activity summary
+            activity_summary = self.metrics_tracker.activity_tracker.get_activity_summary()
+            if activity_summary['activities']:
+                summary_file.write("\nActivity Summary:\n")
+                for activity_data in activity_summary['activities']:
+                    summary_file.write(f"- {activity_data['name']}: {activity_data['formatted_duration']}\n")
 
             if recording_status["output_path"]:
                 summary_file.write("\nScreen Recording:\n")
@@ -782,6 +792,7 @@ class TelemetryGUI:
     def start_logging(self):
         """Start the logging process."""
         if hasattr(self.root, 'monitor'):
+            
             # Ask for export directory
             directory_path = filedialog.askdirectory(
                 title="Select Export Directory",
@@ -818,7 +829,6 @@ class TelemetryGUI:
             self.floating_window.show()
             self.floating_window.update_button_states('running')
             self.floating_window.set_timer("0s")
-            
             
             self._create_screen_border(color="#FF0000", thickness=4)
             self._show_screen_border()
@@ -861,13 +871,20 @@ class TelemetryGUI:
                 self.status_indicator.set_color('warning')
                 self.pause_btn.config(text="Resume")
                 
+                # pause the activity timer
+                self.metrics_tracker.activity_tracker.pause_current_activity()
+                
                 # Update floating button
                 if self.floating_window:
                     self.floating_window.update_button_states('paused')
+                
 
     def stop_logging(self):
         """Stop the logging process and auto-export data."""
         if hasattr(self.root, 'monitor'):
+            # stop the activity tracker
+            self.metrics_tracker.activity_tracker.pause_current_activity()
+            
             # Stop monitoring
             self.root.monitor.stop_monitoring()
 
@@ -885,17 +902,22 @@ class TelemetryGUI:
                     delattr(self, 'export_directory')
                 except Exception as e:
                     self.show_error(f"Failed to auto-export data: {str(e)}")
-
+            
             self.update_button_states('stopped')
             self.update_status_text('Monitoring Stopped', 'danger')
             self.status_indicator.set_color('danger')
             self.pause_btn.config(text="Pause")
+
+            self.metrics_tracker.activity_tracker.reset()
             
             # Hide floating button and show main window
             if self.floating_window:
-                self.floating_window.hide()
+                self.floating_window.clear_activities() 
                 self.floating_window.update_button_states('stopped')
                 self.floating_window.set_timer("0s")
+                self.floating_window._update_all_activity_buttons()
+                self.floating_window.hide()
+    
             self.root.deiconify()
             self.root.lift()
             
@@ -939,7 +961,8 @@ class TelemetryGUI:
         self.floating_window = FloatingControlWindow(
             on_pause=self.pause_logging,
             on_stop=self.stop_logging,
-            on_show_window=self.show_main_window_from_floating
+            on_show_window=self.show_main_window_from_floating,
+            activity_tracker=self.metrics_tracker.activity_tracker  
         )
     
     def show_main_window_from_floating(self):

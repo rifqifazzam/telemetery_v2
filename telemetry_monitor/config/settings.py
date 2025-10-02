@@ -101,6 +101,7 @@ class Config:
         ("Network MBps", 80),
         ("Disk MBps", 70),
         ("Rec Timestamp", 120),
+        ("Process Name", 100)
     ]
 
     # UI spacing and layout

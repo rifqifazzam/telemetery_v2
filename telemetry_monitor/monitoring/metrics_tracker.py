@@ -11,7 +11,7 @@ from .system_monitor import SystemMonitor
 from .screen_recorder import ScreenRecorder
 from ..config.settings import Config
 from ..utils.helpers import create_timestamp
-
+from .activity_tracker import ActivityTracker
 
 class MetricsTracker:
     """Coordinates all metrics tracking and calculations."""
@@ -21,6 +21,7 @@ class MetricsTracker:
         self.input_monitor = InputMonitor()
         self.system_monitor = SystemMonitor()
         self.screen_recorder = ScreenRecorder()
+        self.activity_tracker = ActivityTracker()
 
         # Data logging
         self.telemetry_log = deque(maxlen=Config.MAX_LOG_ENTRIES)
@@ -88,6 +89,7 @@ class MetricsTracker:
             'memory_percent': display_data['memory_percent'],
             'network_mbps': display_data['network_mbps'],
             'disk_mbps': display_data['disk_mbps'],
+            'activity': self.activity_tracker.get_current_activity_name() or 'None',
             'rec_timestamp': self.screen_recorder.get_recording_timestamp()
         }
 
@@ -191,6 +193,7 @@ class MetricsTracker:
         """Clean up all monitoring resources."""
         self.stop_input_monitoring()
         self.screen_recorder.cleanup()
+        self.activity_tracker.pause_current_activity()
 
     def get_current_metrics(self) -> Dict[str, Any]:
         """Get current metrics data for display update."""
@@ -242,5 +245,6 @@ class MetricsTracker:
                 'network': self.system_monitor.get_network_info()
             },
             'recording': self.get_recording_status(),
-            'log_size': len(self.telemetry_log)
+            'log_size': len(self.telemetry_log),
+            'process name': self.activity_tracker.get_activity_summary(),
         }
