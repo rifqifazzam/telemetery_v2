@@ -95,6 +95,9 @@ class FloatingControlWindow:
         
         self.is_visible = True
         
+        # Initialize empty state visibility
+        self._update_empty_state_visibility()
+        
         # Start activity update loop
         self._schedule_activity_update()
 
@@ -284,6 +287,9 @@ class FloatingControlWindow:
         # Scrollable activity list
         self._create_activity_list(activity_section)
         
+        # Empty state message
+        self._create_empty_state(activity_section)
+        
     def _create_activity_list(self, parent: tk.Frame):
         """Create scrollable activity list container."""
         # Container for canvas and scrollbar
@@ -424,21 +430,108 @@ class FloatingControlWindow:
         if not self.activity_tracker:
             return
         
-        activity_name = simpledialog.askstring(
-            "Add Process",
-            "Masukkan nama proses:",
-            parent=self.window
-        )
+        # Create custom dialog
+        dialog = tk.Toplevel(self.window)
+        dialog.title("Add Process")
+        dialog.geometry("350x150")
+        dialog.configure(bg=Config.COLORS['bg_secondary'])
+        dialog.resizable(False, False)
         
-        if activity_name and activity_name.strip():
-            activity_name = activity_name.strip()
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (350 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (150 // 2)
+        dialog.geometry(f"350x150+{x}+{y}")
+        
+          # Make modal
+        dialog.transient(self.window)
+        dialog.grab_set()
+        
+        # Content frame
+        content_frame = tk.Frame(dialog, bg=Config.COLORS['bg_secondary'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Label
+        tk.Label(
+            content_frame,
+            text="Masukkan nama proses:",
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE + 1),
+            bg=Config.COLORS['bg_secondary'],
+            fg=Config.COLORS['text_primary']
+        ).pack(pady=(0, 10))
+        
+        # Entry with larger font
+        entry = tk.Entry(
+            content_frame,
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE + 2),
+            bg=Config.COLORS['bg_primary'],
+            fg=Config.COLORS['text_primary'],
+            insertbackground=Config.COLORS['text_primary'],
+            relief=tk.FLAT,
+            bd=5
+        )
+        entry.pack(fill=tk.X, pady=(0, 15))
+        entry.focus_set()
+        
+        result = {'activity_name': None}
+        
+        def on_ok():
+            activity_name = entry.get().strip()
+            if activity_name:
+                result['activity_name'] = activity_name
+                dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        # Bind Enter key to OK
+        entry.bind('<Return>', lambda e: on_ok())
+        entry.bind('<Escape>', lambda e: on_cancel())
+        
+        # Button frame
+        button_frame = tk.Frame(content_frame, bg=Config.COLORS['bg_secondary'])
+        button_frame.pack(fill=tk.X)
+        
+        # OK button
+        ok_btn = tk.Button(
+            button_frame,
+            text="OK",
+            command=on_ok,
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE),
+            bg=Config.COLORS['success'],
+            fg='white',
+            relief=tk.FLAT,
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        ok_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+        
+        # Cancel button
+        cancel_btn = tk.Button(
+            button_frame,
+            text="Cancel",
+            command=on_cancel,
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE),
+            bg=Config.COLORS['bg_tertiary'],
+            fg=Config.COLORS['text_primary'],
+            relief=tk.FLAT,
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        cancel_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
+        
+        # Wait for dialog to close
+        dialog.wait_window()
+        
+        # Process result
+        activity_name = result['activity_name']
+        if activity_name:
             success = self.activity_tracker.add_activity(activity_name)
-            
             if success:
                 self._create_activity_button(activity_name)
-            else:
-                # Activity already exists
-                pass
+                self._update_empty_state_visibility()
 
     def _create_activity_button(self, activity_name: str):
         """Create a button for an activity."""
@@ -447,45 +540,92 @@ class FloatingControlWindow:
             self.activity_list_frame,
             bg=Config.COLORS['bg_secondary']
         )
-        btn_container.pack(fill=tk.X, pady=2)
+        btn_container.pack(fill=tk.X, pady=4)
         
-        # Activity button
-        btn = tk.Button(
+        # Main button frame
+        btn_frame = tk.Frame(
             btn_container,
+            bg=Config.COLORS['bg_tertiary'],
+            cursor="hand2"
+        )
+        btn_frame.pack(fill=tk.X, padx=4, pady=2)
+        
+        # Inner content frame with padding
+        content_frame = tk.Frame(
+            btn_frame,
+            bg=Config.COLORS['bg_tertiary']
+        )
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
+        
+        # Activity name label (can wrap to multiple lines)
+        name_label = tk.Label(
+            content_frame,
             text="",  # Will be set by update method
-            command=lambda: self.select_activity(activity_name),
             bg=Config.COLORS['bg_tertiary'],
             fg=Config.COLORS['text_secondary'],
             font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE),
-            relief=tk.FLAT,
-            padx=Config.PADDING_MEDIUM,
-            pady=Config.PADDING_SMALL,
-            cursor="hand2",
             anchor="w",
-            justify=tk.LEFT
+            justify=tk.LEFT,
+            wraplength=200  # Allow text wrapping
         )
-        btn.pack(fill=tk.X)
+        name_label.pack(side=tk.TOP, fill=tk.X, anchor="w")
         
-        # Store button reference
-        self.activity_buttons[activity_name] = btn
+        # Duration label (right-aligned)
+        duration_label = tk.Label(
+            content_frame,
+            text="00:00",
+            bg=Config.COLORS['bg_tertiary'],
+            fg=Config.COLORS['text_muted'],
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE - 1),
+            anchor="e",
+            justify=tk.RIGHT
+        )
+        duration_label.pack(side=tk.TOP, fill=tk.X, anchor="e", pady=(2, 0))
         
-        # Hover effects
-        def on_enter(e):
-            if btn['bg'] != Config.COLORS['success']:
-                btn.config(bg=Config.COLORS['bg_primary'])
+        # Store references
+        self.activity_buttons[activity_name] = {
+            'frame': btn_frame,
+            'content_frame': content_frame,
+            'name_label': name_label,
+            'duration_label': duration_label
+        }
         
-        def on_leave(e):
-            if btn['bg'] != Config.COLORS['success']:
-                btn.config(bg=Config.COLORS['bg_tertiary'])
+        # Bind click events to all elements
+        for widget in [btn_frame, content_frame, name_label, duration_label]:
+            widget.bind('<Button-1>', lambda e: self.select_activity(activity_name))
+            widget.bind('<Enter>', lambda e: self._on_activity_hover_enter(activity_name))
+            widget.bind('<Leave>', lambda e: self._on_activity_hover_leave(activity_name))
         
-        btn.bind('<Enter>', on_enter)
-        btn.bind('<Leave>', on_leave)
-        
-        # Create tooltip for long text
-        self._create_tooltip(btn, activity_name)
-        
-        # Update button text
+        # Update button appearance
         self._update_activity_button(activity_name)
+        
+    def _on_activity_hover_enter(self, activity_name: str):
+        """Handle mouse enter on activity."""
+        if activity_name not in self.activity_buttons:
+            return
+        
+        btn_widgets = self.activity_buttons[activity_name]
+        is_active = self.activity_tracker.get_current_activity_name() == activity_name
+        
+        if not is_active:
+            hover_color = Config.COLORS['bg_primary']
+            for widget in [btn_widgets['frame'], btn_widgets['content_frame'], 
+                          btn_widgets['name_label'], btn_widgets['duration_label']]:
+                widget.config(bg=hover_color)
+    
+    def _on_activity_hover_leave(self, activity_name: str):
+        """Handle mouse leave on activity."""
+        if activity_name not in self.activity_buttons:
+            return
+        
+        btn_widgets = self.activity_buttons[activity_name]
+        is_active = self.activity_tracker.get_current_activity_name() == activity_name
+        
+        if not is_active:
+            normal_color = Config.COLORS['bg_tertiary']
+            for widget in [btn_widgets['frame'], btn_widgets['content_frame'], 
+                          btn_widgets['name_label'], btn_widgets['duration_label']]:
+                widget.config(bg=normal_color)
 
     def _create_tooltip(self, widget, text):
         """Create a tooltip for a widget."""
@@ -524,6 +664,10 @@ class FloatingControlWindow:
         """Select an activity as active."""
         if not self.activity_tracker:
             return
+    
+        # If paused, resume monitoring when selecting an activity
+        if self.is_paused and self.on_pause:
+            self.on_pause()  # This will resume monitoring
         
         success = self.activity_tracker.set_active_activity(activity_name)
         if success:
@@ -534,7 +678,7 @@ class FloatingControlWindow:
         if activity_name not in self.activity_buttons:
             return
         
-        btn = self.activity_buttons[activity_name]
+        btn_widgets = self.activity_buttons[activity_name]
         activity = self.activity_tracker.get_activity(activity_name)
         
         if not activity:
@@ -543,29 +687,30 @@ class FloatingControlWindow:
         # Get duration
         duration = activity.get_formatted_duration()
         
-        # Truncate long names for display
-        display_name = activity_name
-        max_length = 20
-        if len(display_name) > max_length:
-            display_name = display_name[:max_length-3] + "..."
-        
         # Check if active
         is_active = self.activity_tracker.get_current_activity_name() == activity_name
         
         if is_active:
-            # Active state
-            btn.config(
-                text=f"✓ {display_name}  {duration}",
-                bg=Config.COLORS['success'],
-                fg='white'
-            )
+            # Active state - green background
+            bg_color = Config.COLORS['success']
+            text_color = 'white'
+            duration_color = 'white'
+            name_text = f"✓ {activity_name}"
         else:
-            # Inactive state
-            btn.config(
-                text=f"  {display_name}  {duration}",
-                bg=Config.COLORS['bg_tertiary'],
-                fg=Config.COLORS['text_secondary']
-            )
+            # Inactive state - normal background
+            bg_color = Config.COLORS['bg_tertiary']
+            text_color = Config.COLORS['text_secondary']
+            duration_color = Config.COLORS['text_muted']
+            name_text = activity_name
+        
+        # Update all widget colors
+        for widget in [btn_widgets['frame'], btn_widgets['content_frame'], 
+                      btn_widgets['name_label'], btn_widgets['duration_label']]:
+            widget.config(bg=bg_color)
+        
+        # Update text and colors
+        btn_widgets['name_label'].config(text=name_text, fg=text_color)
+        btn_widgets['duration_label'].config(text=duration, fg=duration_color)
 
     def _update_all_activity_buttons(self):
         """Update all activity buttons."""
@@ -829,8 +974,16 @@ class FloatingControlWindow:
         self.activity_update_scheduled = False
         
         # Destroy all activity button containers
-        for widget in self.activity_list_frame.winfo_children():
-            widget.destroy()
+        for activity_name in list(self.activity_buttons.keys()):
+            if 'frame' in self.activity_buttons[activity_name]:
+                # New multi-widget structure
+                btn_widgets = self.activity_buttons[activity_name]
+                if btn_widgets['frame'].winfo_exists():
+                    btn_widgets['frame'].master.destroy()  # Destroy the container
+            else:
+                # Old single-widget structure (backwards compatibility)
+                if self.activity_buttons[activity_name].winfo_exists():
+                    self.activity_buttons[activity_name].master.destroy()
         
         # Clear button references
         self.activity_buttons.clear()
@@ -838,4 +991,70 @@ class FloatingControlWindow:
         # Reset canvas height
         if self.activity_canvas:
             self.activity_canvas.config(height=0)
+            
+        # Show empty state after clearing
+        self._update_empty_state_visibility()  
         
+    def _create_empty_state(self, parent: tk.Frame):
+        """Create empty state message when no activities exist."""
+        self.empty_state_frame = tk.Frame(
+            parent,
+            bg=Config.COLORS['bg_secondary'],
+        )
+
+        # Message container
+        message_container = tk.Frame(
+            self.empty_state_frame,
+            bg=Config.COLORS['bg_tertiary']
+        )
+        message_container.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # Icon or emoji
+        tk.Label(
+            message_container,
+            text="📋",
+            font=(Config.FONT_FAMILY, 24),
+            bg=Config.COLORS['bg_tertiary'],
+            fg=Config.COLORS['text_secondary']
+        ).pack(pady=(15, 5))
+
+        # Main message
+        tk.Label(
+            message_container,
+            text="No activities yet.",
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE, "bold"),
+            bg=Config.COLORS['bg_tertiary'],
+            fg=Config.COLORS['text_secondary']
+        ).pack(pady=(0, 3))
+
+        # Sub message
+        tk.Label(
+            message_container,
+            text='Click "+ Add" to create one!',
+            font=(Config.FONT_FAMILY, Config.BUTTON_FONT_SIZE - 1),
+            bg=Config.COLORS['bg_tertiary'],
+            fg=Config.COLORS['text_muted']
+        ).pack(pady=(0, 15))
+
+        # Show empty state by default
+        self.empty_state_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _update_empty_state_visibility(self):
+        """Show or hide empty state based on activity count."""
+        if len(self.activity_buttons) == 0:
+            #Hide canvas and scrollbar
+            # self.activity_canvas.forget()
+            self.activity_scrollbar.pack_forget()
+            
+            # Show empty state
+            self.activity_canvas.pack_forget()
+            self.empty_state_frame.pack(fill=tk.BOTH, expand=True)
+            # self.empty_state_frame.config(height=120) 
+            # self.empty_state_frame.pack_propagate(False)  
+        else:
+            # Hide empty state
+            self.empty_state_frame.forget()
+
+            # Show activity list
+            self.empty_state_frame.pack_forget()
+            self.activity_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)

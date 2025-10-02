@@ -101,7 +101,9 @@ class ActivityTracker:
             
         Returns:
             True if successful, False if activity doesn't exist
+            
         """
+        
         if name not in self.activities:
             return False
         
