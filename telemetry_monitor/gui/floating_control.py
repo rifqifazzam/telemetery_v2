@@ -342,6 +342,9 @@ class FloatingControlWindow:
         
     def _on_activity_list_configure(self, event=None):
         """Handle activity list frame configuration."""
+        if len(self.activity_buttons) == 0:  # ✅ ADD THIS
+            return 
+    
         self.activity_canvas.configure(scrollregion=self.activity_canvas.bbox("all"))
         
         # Show/hide scrollbar based on content height
@@ -714,7 +717,7 @@ class FloatingControlWindow:
 
     def _update_all_activity_buttons(self):
         """Update all activity buttons."""
-        if not self.activity_tracker:
+        if not self.activity_tracker or not self.activity_buttons:
             return
         
         for activity_name in self.activity_buttons.keys():
@@ -899,9 +902,7 @@ class FloatingControlWindow:
             title: New title text
         """
         if self.window:
-            # Note: overrideredirect windows can't change title in taskbar
-            # but we can update the label
-            pass  # Could update title label if we store a reference
+            pass  
 
     # Utility Methods
     
@@ -970,8 +971,11 @@ class FloatingControlWindow:
         
     def clear_activities(self):
         """Clear all activity buttons from the UI."""
-        
         self.activity_update_scheduled = False
+        
+        if not self.activity_canvas or not self.activity_list_frame:
+            self.activity_buttons.clear()
+            return
         
         # Destroy all activity button containers
         for activity_name in list(self.activity_buttons.keys()):
@@ -988,15 +992,31 @@ class FloatingControlWindow:
         # Clear button references
         self.activity_buttons.clear()
         
-        # Reset canvas height
+        # Completely reset the activity list frame  
+        if self.activity_list_frame and self.activity_list_frame.winfo_exists():
+            for widget in self.activity_list_frame.winfo_children():
+                widget.destroy()
+        
+        # Reset canvas completely
         if self.activity_canvas:
             self.activity_canvas.config(height=0)
+            self.activity_canvas.configure(scrollregion=(0, 0, 0, 0))  
+            self.activity_canvas.yview_moveto(0) 
+            self.activity_scrollbar.pack_forget()
+            
+        # Force update to recalculate layout  
+        if self.window:
+            self.window.update_idletasks()
             
         # Show empty state after clearing
-        self._update_empty_state_visibility()  
+        self._update_empty_state_visibility()
+        
+        # Force another update to ensure proper rendering 
+        if self.window:
+            self.window.update_idletasks()
         
     def _create_empty_state(self, parent: tk.Frame):
-        """Create empty state message when no activities exist."""
+        """Create empty state message when no activities exist.""" 
         self.empty_state_frame = tk.Frame(
             parent,
             bg=Config.COLORS['bg_secondary'],
@@ -1043,18 +1063,16 @@ class FloatingControlWindow:
         """Show or hide empty state based on activity count."""
         if len(self.activity_buttons) == 0:
             #Hide canvas and scrollbar
-            # self.activity_canvas.forget()
+            self.activity_canvas.pack_forget()
             self.activity_scrollbar.pack_forget()
+            
+            # Reset canvas height to 0
+            self.activity_canvas.config(height=0)
             
             # Show empty state
             self.activity_canvas.pack_forget()
             self.empty_state_frame.pack(fill=tk.BOTH, expand=True)
-            # self.empty_state_frame.config(height=120) 
-            # self.empty_state_frame.pack_propagate(False)  
         else:
-            # Hide empty state
-            self.empty_state_frame.forget()
-
             # Show activity list
             self.empty_state_frame.pack_forget()
             self.activity_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)

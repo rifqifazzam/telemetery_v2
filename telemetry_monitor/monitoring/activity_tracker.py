@@ -142,8 +142,8 @@ class ActivityTracker:
         
         self.activities.clear()
         self.activity_order.clear()
-        self.current_activity = None    
-        
+        self.current_activity = None 
+          
     def get_activity_summary(self) -> Dict[str, Any]:
         """Get summary of all activities for export."""
         return {

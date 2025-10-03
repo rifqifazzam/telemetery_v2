@@ -793,6 +793,20 @@ class TelemetryGUI:
         """Start the logging process."""
         if hasattr(self.root, 'monitor'):
             
+            # confirmation dialog  
+            confirm = messagebox.askyesno(
+                "Start Recording",
+                "Are you sure you want to start monitoring and recording?\n\n"
+                "This will:\n"
+                "• Start tracking system metrics\n"
+                "• Begin screen recording\n"
+                "• Hide the main window",
+                icon='question'
+            )
+            
+            if not confirm:
+                return
+            
             # Ask for export directory
             directory_path = filedialog.askdirectory(
                 title="Select Export Directory",
@@ -809,10 +823,10 @@ class TelemetryGUI:
 
             # Store export directory for later use
             self.export_directory = export_dir
-
+            
             # Start monitoring
             self.root.monitor.start_monitoring()
-
+            
             # Start screen recording with export directory path
             video_path = os.path.join(export_dir, f"screen_recording_{timestamp}.mp4")
             success, message = self.metrics_tracker.start_screen_recording(video_path)
@@ -829,6 +843,7 @@ class TelemetryGUI:
             self.floating_window.show()
             self.floating_window.update_button_states('running')
             self.floating_window.set_timer("0s")
+            self.floating_window._update_all_activity_buttons()
             
             self._create_screen_border(color="#FF0000", thickness=4)
             self._show_screen_border()
@@ -882,6 +897,21 @@ class TelemetryGUI:
     def stop_logging(self):
         """Stop the logging process and auto-export data."""
         if hasattr(self.root, 'monitor'):
+            
+            # confirmation dialog
+            confirm = messagebox.askyesno(
+                "Stop Recording",
+                "Are you sure you want to stop monitoring and recording?\n\n"
+                "This will:\n"
+                "• Stop tracking system metrics\n"
+                "• End screen recording\n"
+                "• Show the main window",
+                icon='warning'
+            )
+            
+            if not confirm:
+                return
+            
             # stop the activity tracker
             self.metrics_tracker.activity_tracker.pause_current_activity()
             
@@ -908,15 +938,15 @@ class TelemetryGUI:
             self.status_indicator.set_color('danger')
             self.pause_btn.config(text="Pause")
 
-            self.metrics_tracker.activity_tracker.reset()
             
             # Hide floating button and show main window
             if self.floating_window:
-                self.floating_window.clear_activities() 
-                self.floating_window.update_button_states('stopped')
                 self.floating_window.set_timer("0s")
-                self.floating_window._update_all_activity_buttons()
-                self.floating_window.hide()
+                self.floating_window.update_button_states('stopped')
+                self.metrics_tracker.activity_tracker.reset()
+                self.floating_window.clear_activities() 
+            
+            self.root.after(200, self.floating_window.hide)
     
             self.root.deiconify()
             self.root.lift()
